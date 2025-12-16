@@ -1,0 +1,744 @@
+{
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        0
+      ],
+      "id": "41d37b9b-5c28-4243-9425-fcb6715bbf2d",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v23.0/act_{{ $json['ID - Conta Meta 1'] }}/insights",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "level",
+              "value": "campaign"
+            },
+            {
+              "name": "fields",
+              "value": "=account_id, account_name, campaign_id,campaign_name,impressions,reach,clicks,spend,cpc,cpm,ctr,frequency,actions,action_values,conversions,cost_per_conversion"
+            },
+            {
+              "name": "time_range",
+              "value": "={\"since\":\"{{ $('Regras de Negócio - Time Extract').item.json.week_last.since }}\",\"until\":\"{{ $('Regras de Negócio - Time Extract').item.json.week_last.until }}\"} "
+            },
+            {
+              "name": "limit",
+              "value": "100"
+            },
+            {
+              "name": "access_token",
+              "value": "EAAKIX4JyDf8BP2bfR85jNz7TgoI7MQrxFVOi1VWlqElYIxnRfgRXMZBtcVfEAQ3RDGmXxAvJjIBLAO0V9x8Og9WslcMNTdlwcXIz8P0BNZClMR15SnEohZAeEDZA6kO1ieVemJuzwnimiYMQ25szZAuETByMXTwZCG7KIJLdLz9xItcsj0TmS5NoG3SewGBAZDZD"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        608,
+        0
+      ],
+      "id": "9dac81e5-e6c1-4ba8-9f04-fc7c5f229a17",
+      "name": "Meta - Campanha - Last Week",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "content": "Busca ID das contas de anúncio do Meta",
+        "height": 800,
+        "width": 544
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -96,
+        -224
+      ],
+      "typeVersion": 1,
+      "id": "393d96e7-ffda-4162-80bd-6e5c1d56b730",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "Chama API do Meta com métricas\n",
+        "height": 800,
+        "width": 1104,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        448,
+        -224
+      ],
+      "typeVersion": 1,
+      "id": "c34c594f-e20d-4f7c-bf28-6985deba73c7",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Code Node: Output Parser - Relacionar Activities + Insights por Account ID\nconst items = $input.all();\n\n// LISTA DE AÇÕES PERMITIDAS (Ampliada com base no seu JSON)\nconst RELEVANT_ACTIONS = [\n  // Cliques e Visualizações\n  'link_click', \n  'video_view',\n  'page_engagement',\n  'post_engagement',\n  'post_reaction',\n  'landing_page_view',\n  'view_content',\n  'omni_view_content',\n  'onsite_web_view_content',\n  \n  // Funil de Compra\n  'add_to_cart',\n  'omni_add_to_cart',\n  'onsite_web_add_to_cart',\n  'initiate_checkout',\n  'omni_initiated_checkout',\n  'onsite_web_initiate_checkout',\n  'purchase',\n  'omni_purchase',\n  'offsite_conversion.fb_pixel_purchase',\n  'onsite_web_purchase',\n  'onsite_web_app_purchase',\n  'web_in_store_purchase',\n\n  // Leads e Cadastros\n  'lead',\n  'onsite_web_lead',\n  'offsite_conversion.fb_pixel_lead',\n  'offsite_complete_registration_add_meta_leads', // Comum para cadastros\n  'onsite_conversion.lead_grouped',\n  \n  // Mensagens e Contatos\n  'contact',\n  'onsite_conversion.total_messaging_connection', // Principal métrica de MSG\n  'onsite_conversion.messaging_conversation_started_7d',\n  'onsite_conversion.messaging_first_reply',\n  'click_to_call_call_confirm' // Ligações\n];\n\nconst accountsMap = new Map();\n\nfor (const item of items) {\n  const json = item.json;\n  \n  // ACTIVITIES: estrutura { account_id, data: [...] }\n  if (json.account_id && json.data && Array.isArray(json.data) && json.data[0]?.event_type) {\n    const accId = String(json.account_id);\n    \n    if (!accountsMap.has(accId)) {\n      accountsMap.set(accId, {\n        account_id: accId,\n        account_name: json.account_name || null,\n        activities: [],\n        insights: []\n      });\n    }\n    \n    const account = accountsMap.get(accId);\n    account.activities.push(...json.data);\n    if (json.account_name) account.account_name = json.account_name;\n  }\n  \n  // INSIGHTS: estrutura { data: [{ account_id, campaign_id, actions, ... }] }\n  if (json.data && Array.isArray(json.data) && json.data[0]?.campaign_id) {\n    for (const campaign of json.data) {\n      const accId = String(campaign.account_id);\n      \n      if (!accId) continue;\n      \n      if (!accountsMap.has(accId)) {\n        accountsMap.set(accId, {\n          account_id: accId,\n          account_name: campaign.account_name || null,\n          activities: [],\n          insights: []\n        });\n      }\n      \n      const account = accountsMap.get(accId);\n      if (campaign.account_name) account.account_name = campaign.account_name;\n      \n      // Filtra actions relevantes usando a NOVA LISTA\n      const filteredActions = (campaign.actions || [])\n        .filter(a => RELEVANT_ACTIONS.includes(a.action_type))\n        .map(a => ({ action_type: a.action_type, value: a.value }));\n      \n      // Filtra action_values relevantes\n      const filteredActionValues = (campaign.action_values || [])\n        .filter(a => RELEVANT_ACTIONS.includes(a.action_type))\n        .map(a => ({ action_type: a.action_type, value: a.value }));\n      \n      // Monta insight limpo\n      account.insights.push({\n        campaign_id: campaign.campaign_id,\n        campaign_name: campaign.campaign_name,\n        impressions: campaign.impressions,\n        reach: campaign.reach,\n        clicks: campaign.clicks,\n        spend: campaign.spend,\n        cpc: campaign.cpc,\n        cpm: campaign.cpm,\n        ctr: campaign.ctr,\n        frequency: campaign.frequency,\n        date_start: campaign.date_start,\n        date_stop: campaign.date_stop,\n        actions: filteredActions,\n        action_values: filteredActionValues\n      });\n    }\n  }\n}\n\nconst accounts = Array.from(accountsMap.values());\n\nreturn [{\n  json: {\n    total_accounts: accounts.length,\n    accounts: accounts\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1152,
+        -16
+      ],
+      "id": "30cab877-d1c5-443a-9081-840cc2f111bd",
+      "name": "Output Parser"
+    },
+    {
+      "parameters": {
+        "content": "Resumo das métricas",
+        "height": 800,
+        "width": 1040,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1552,
+        -224
+      ],
+      "typeVersion": 1,
+      "id": "5175bec1-2806-4903-81c1-78dd09873405",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ===================================\n// FUNÇÕES AUXILIARES\n// ===================================\nconst roundMoney = (num) => Math.round((num + Number.EPSILON) * 100) / 100;\n\nfunction safeDivide(numerator, denominator) {\n    numerator = Number(numerator || 0);\n    denominator = Number(denominator || 0);\n    return denominator !== 0 ? numerator / denominator : 0;\n}\n\n// ===================================\n// MAPEAMENTO INTELIGENTE DE MÉTRICAS (Somando variações)\n// ===================================\nconst actionMap = {\n  // --- MENSAGENS ---\n  'onsite_conversion.total_messaging_connection': 'message_starts',\n  'onsite_conversion.messaging_conversation_started_7d': 'message_starts',\n  'onsite_conversion.messaging_first_reply': 'message_starts',\n  \n  // --- LEADS ---\n  'lead': 'leads',\n  'onsite_web_lead': 'leads',\n  'offsite_conversion.fb_pixel_lead': 'leads',\n  'offsite_complete_registration_add_meta_leads': 'leads',\n  'onsite_conversion.lead_grouped': 'leads',\n  \n  // --- COMPRAS ---\n  'purchase': 'purchases',\n  'omni_purchase': 'purchases',\n  'offsite_conversion.fb_pixel_purchase': 'purchases',\n  'onsite_web_purchase': 'purchases',\n  'onsite_web_app_purchase': 'purchases',\n  'web_in_store_purchase': 'purchases',\n  \n  // --- CHECKOUT ---\n  'initiate_checkout': 'initiate_checkout',\n  'omni_initiated_checkout': 'initiate_checkout',\n  'offsite_conversion.fb_pixel_initiate_checkout': 'initiate_checkout',\n  'onsite_web_initiate_checkout': 'initiate_checkout',\n  \n  // --- ADD TO CART ---\n  'add_to_cart': 'add_to_cart',\n  'omni_add_to_cart': 'add_to_cart',\n  'offsite_conversion.fb_pixel_add_to_cart': 'add_to_cart',\n  'onsite_web_add_to_cart': 'add_to_cart',\n  \n  // --- OUTROS ---\n  'link_click': 'link_clicks',\n  'video_view': 'video_views',\n  'landing_page_view': 'landing_page_views',\n  'omni_landing_page_view': 'landing_page_views',\n  'view_content': 'view_content',\n  'omni_view_content': 'view_content'\n};\n\nconst accounts = $json.accounts.map(account => {\n  const insightsByPeriod = {};\n  \n  (account.insights || []).forEach(i => {\n    // Chave única baseada no intervalo de datas\n    const key = `${i.date_start}_${i.date_stop}`;\n    \n    if (!insightsByPeriod[key]) {\n      insightsByPeriod[key] = {\n        date_start: i.date_start,\n        date_stop: i.date_stop,\n        spend: 0,\n        impressions: 0,\n        clicks: 0,\n        reach: 0, // Nota: Reach somado não é único, mas serve para estimativa\n        frequency: 0, \n        \n        // Métricas de Conversão Inicializadas\n        message_starts: 0,\n        leads: 0,\n        purchases: 0,\n        purchase_value: 0,\n        initiate_checkout: 0,\n        add_to_cart: 0,\n        link_clicks: 0,\n        landing_page_views: 0,\n        view_content: 0\n      };\n    }\n\n    // Soma Métricas Básicas\n    insightsByPeriod[key].spend += Number(i.spend || 0);\n    insightsByPeriod[key].impressions += Number(i.impressions || 0);\n    insightsByPeriod[key].clicks += Number(i.clicks || 0);\n    insightsByPeriod[key].reach += Number(i.reach || 0); \n    \n    // Soma Conversões usando o Mapa\n    (i.actions || []).forEach(a => {\n      if (actionMap[a.action_type]) {\n        const targetMetric = actionMap[a.action_type];\n        insightsByPeriod[key][targetMetric] += Number(a.value || 0);\n      }\n    });\n\n    // Soma Valores (Receita)\n    (i.action_values || []).forEach(av => {\n      // Se o tipo de ação mapeia para 'purchases', somamos o valor\n      if (actionMap[av.action_type] === 'purchases') {\n        insightsByPeriod[key].purchase_value += Number(av.value || 0);\n      }\n    });\n  });\n\n  // Processamento Final (Médias e Derivadas)\n  const aggregatedList = Object.values(insightsByPeriod).map(item => {\n    item.spend = roundMoney(item.spend);\n    item.purchase_value = roundMoney(item.purchase_value);\n\n    // Métricas calculadas\n    item.ctr = safeDivide(item.clicks, item.impressions) * 100;\n    item.cpm = safeDivide(item.spend, item.impressions) * 1000;\n    item.frequency = safeDivide(item.impressions, item.reach); \n    item.roas = safeDivide(item.purchase_value, item.spend);\n    \n    item.cpa = safeDivide(item.spend, item.purchases); // Custo por Compra\n    item.cpl = safeDivide(item.spend, item.leads);     // Custo por Lead (apenas leads de formulário/site)\n    item.cp_msg = safeDivide(item.spend, item.message_starts); // Custo por Mensagem\n    \n    // Arredondamento final\n    item.ctr = roundMoney(item.ctr);\n    item.cpm = roundMoney(item.cpm);\n    item.frequency = roundMoney(item.frequency);\n    item.roas = roundMoney(item.roas);\n    item.cpa = roundMoney(item.cpa);\n    item.cpl = roundMoney(item.cpl);\n    item.cp_msg = roundMoney(item.cp_msg);\n    \n    return item;\n  });\n\n  // Processa Atividades do Gestor\n  const managerActivities = (account.activities || [])\n    .filter(a => a.actor_name !== 'Meta')\n    .map(a => ({\n      event_type: a.event_type,\n      event_time: a.event_time,\n      object_type: a.object_type,\n      actor_name: a.actor_name\n    }));\n\n  const totalActivities = (account.activities || []).length;\n  const autoActivityCount = (account.activities || []).filter(a => a.actor_name === 'Meta').length;\n  const manualActivityCount = managerActivities.length;\n\n  return {\n    account_id: account.account_id,\n    account_name: account.account_name,\n    insights_aggregated: aggregatedList,\n    manager_activities: managerActivities,\n    activity_summary: {\n        total: totalActivities,\n        auto: autoActivityCount,\n        manual: manualActivityCount,\n    }\n  };\n});\n\nreturn [{ json: { total_accounts: accounts.length, accounts } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1392,
+        -16
+      ],
+      "id": "17fbe124-5541-4e58-ad44-ce1b13c70934",
+      "name": "Aggregate Metrics"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=<role>\nVocê é um Analista Estratégico de Performance Sênior, operando com o arquétipo do Sábio (The Sage). Sua missão é fornecer **apenas** o Resumo Executivo estratégico.\n</role>\n\n<objective>\nAnalisar os dados de variação fornecidos e gerar um **Resumo Executivo** de alto nível para C-Levels, em no máximo 1 parágrafo (3-5 frases), destacando o status geral da conta, os principais drivers de variação (positiva/negativa) e uma conclusão sênior sobre a tendência.\n</objective>\n\n<audience>\nEmpresários, C-Levels, Donos de PMEs, Gerentes e Diretores. (Foco em impacto de negócio, minimizando jargões técnicos).\n</audience>\n\n<style>\nConcisão, objetividade e autoridade.\n</style>\n\n<tone>\nSábio, Proativo e Analítico.\n</tone>\n\n<think_tool_instructions>\nOBRIGATÓRIO: Use a ferramenta \"Think\" para estruturar a análise ANTES de gerar o Resumo.\n\n<think_sequence>\n<step order=\"1\" name=\"synthesis_and_diagnosis\">\nUse Think para:\n- Classificar o Status Geral da conta (Saudável, Atenção, Crítico) com base nos dados de variação (ex: CPL subiu 50% = Crítico).\n- Identificar o principal driver de performance usando as variáveis `variations` (e.g., \"Aumento no Investimento levou a mais Leads, e o CPL se manteve estável\").\n- Formular o *insight* estratégico, alinhado com o **Arquétipo do Sábio**.\n</step>\n\n<step order=\"2\" name=\"executive_summary_creation\">\nUse Think para:\n- **Gerar o texto final** (string) do Resumo Executivo, garantindo no máximo **1 parágrafo**.\n</step>\n</think_sequence>\n\n<think_format>\nAo usar a ferramenta Think, utilize a seguinte estrutura para cada etapa:\n[STEP X: nome_do_step]\nAccount: {{ $json.account_name }}\nAnálise: {sua análise detalhada}\nConclusão: {conclusão parcial}\n</think_format>\n</think_tool_instructions>\n\n<processing_rules>\n1. **Output Mínimo (R):** A saída final DEVE ser SOMENTE o texto do Resumo Executivo. NÃO inclua o `<output_format>` completo, apenas a string.\n2. **Restrição de Tamanho (R):** O resumo executivo deve ser uma string única de no máximo 1 parágrafo (3-5 frases).\n</processing_rules>\n\n<input_data>\nNome da Conta: {{ $json.account_name }}\nVariações (Current vs Last): {{ JSON.stringify($json.variations) }}\n</input_data>",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        2000,
+        -16
+      ],
+      "id": "03813027-7338-4cd0-b5e3-cdc9b64e2fa7",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "typeVersion": 1.1,
+      "position": [
+        2096,
+        176
+      ],
+      "id": "f8c70858-3ead-45d1-8724-da78353970db",
+      "name": "Think"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code Node - Cálculo de Períodos Temporais para Meta Graph API\n// Timezone: UTC-3 (Brasília)\n\nconst now = new Date();\nconst OFFSET_HOURS = -3;\n\nfunction toBrasilia(date) {\n  const d = new Date(date);\n  d.setHours(d.getHours() + d.getTimezoneOffset() / 60 + OFFSET_HOURS);\n  return d;\n}\n\nfunction fmt(date) {\n  return date.toISOString().split('T')[0];\n}\n\nfunction getMonday(date) {\n  const d = new Date(date);\n  const day = d.getDay();\n  const diff = d.getDate() - day + (day === 0 ? -6 : 1);\n  d.setDate(diff);\n  d.setHours(0, 0, 0, 0);\n  return d;\n}\n\nfunction getSunday(date) {\n  const monday = getMonday(date);\n  const sunday = new Date(monday);\n  sunday.setDate(monday.getDate() + 6);\n  return sunday;\n}\n\nfunction firstDayOfMonth(date) {\n  return new Date(date.getFullYear(), date.getMonth(), 1);\n}\n\nfunction firstDayOfQuarter(date) {\n  const quarter = Math.floor(date.getMonth() / 3);\n  return new Date(date.getFullYear(), quarter * 3, 1);\n}\n\n// Calcula dias decorridos desde o início do período\nfunction daysSinceStart(startDate, currentDate) {\n  return Math.floor((currentDate - startDate) / (1000 * 60 * 60 * 24));\n}\n\nconst today = toBrasilia(now);\n\n// === SEMANAS ===\nconst mondayThisWeek = getMonday(today);\nconst sundayThisWeek = getSunday(today);\n\nconst mondayLastWeek = new Date(mondayThisWeek);\nmondayLastWeek.setDate(mondayLastWeek.getDate() - 7);\nconst sundayLastWeek = new Date(sundayThisWeek);\nsundayLastWeek.setDate(sundayLastWeek.getDate() - 7);\n\nconst mondayWeekBefore = new Date(mondayLastWeek);\nmondayWeekBefore.setDate(mondayWeekBefore.getDate() - 7);\nconst sundayWeekBefore = new Date(sundayLastWeek);\nsundayWeekBefore.setDate(sundayLastWeek.getDate() - 7);\n\n// === MESES (proporcional) ===\nconst firstDayThisMonth = firstDayOfMonth(today);\nconst daysIntoMonth = daysSinceStart(firstDayThisMonth, today);\n\nconst firstDayLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);\nconst untilLastMonth = new Date(firstDayLastMonth);\nuntilLastMonth.setDate(untilLastMonth.getDate() + daysIntoMonth);\n\nconst firstDayMonthBefore = new Date(today.getFullYear(), today.getMonth() - 2, 1);\nconst untilMonthBefore = new Date(firstDayMonthBefore);\nuntilMonthBefore.setDate(untilMonthBefore.getDate() + daysIntoMonth);\n\n// === TRIMESTRES (proporcional) ===\nconst firstDayThisQuarter = firstDayOfQuarter(today);\nconst daysIntoQuarter = daysSinceStart(firstDayThisQuarter, today);\n\nconst firstDayLastQuarter = firstDayOfQuarter(new Date(today.getFullYear(), today.getMonth() - 3, 1));\nconst untilLastQuarter = new Date(firstDayLastQuarter);\nuntilLastQuarter.setDate(untilLastQuarter.getDate() + daysIntoQuarter);\n\nconst firstDayQuarterBefore = firstDayOfQuarter(new Date(today.getFullYear(), today.getMonth() - 6, 1));\nconst untilQuarterBefore = new Date(firstDayQuarterBefore);\nuntilQuarterBefore.setDate(untilQuarterBefore.getDate() + daysIntoQuarter);\n\nreturn {\n  json: {\n    reference_date: fmt(today),\n    days_into_month: daysIntoMonth + 1,\n    days_into_quarter: daysIntoQuarter + 1,\n    \n    week_current: {\n      since: fmt(mondayThisWeek),\n      until: fmt(today)\n    },\n    \n    week_last: {\n      since: fmt(mondayLastWeek),\n      until: fmt(sundayLastWeek)\n    },\n    \n    week_before_last: {\n      since: fmt(mondayWeekBefore),\n      until: fmt(sundayWeekBefore)\n    },\n    \n    month_current: {\n      since: fmt(firstDayThisMonth),\n      until: fmt(today)\n    },\n    \n    month_last: {\n      since: fmt(firstDayLastMonth),\n      until: fmt(untilLastMonth)\n    },\n    \n    month_before_last: {\n      since: fmt(firstDayMonthBefore),\n      until: fmt(untilMonthBefore)\n    },\n    \n    quarter_current: {\n      since: fmt(firstDayThisQuarter),\n      until: fmt(today)\n    },\n    \n    quarter_last: {\n      since: fmt(firstDayLastQuarter),\n      until: fmt(untilLastQuarter)\n    },\n    \n    quarter_before_last: {\n      since: fmt(firstDayQuarterBefore),\n      until: fmt(untilQuarterBefore)\n    }\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "1d4d84f4-6254-4fe1-95f1-517cedd265ff",
+      "name": "Regras de Negócio - Time Extract"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Code Node: Lookup Account ID por real_id (CÓDIGO REVISADO)\nconst items = $input.all();\nconst contas = $('OP - Contas ID Meta').all(); // Linha crítica: verifique se o nome está exato!\n\n// [Cria mapa de lookup inalterado, pois está correto]\nconst contasMap = new Map();\nfor (const conta of contas) {\n  const id = String(conta.json['ID - Conta Meta 1'] || '');\n  if (id) {\n    contasMap.set(id, conta.json);\n  }\n}\n\nreturn items.map((item, index) => {\n  const data = item.json.data || [];\n  \n  // 1. Busca account_id real via objeto ACCOUNT nas atividades (Método principal)\n  const accObj = data.find(a => a.object_type === 'ACCOUNT');\n  let realId = accObj?.object_id || null;\n  \n  // 2. FALLBACK: Tenta buscar o ID se já foi injetado pelo nó Meta - Campanha (se o nó de insights não for de activities)\n  if (!realId && data.length > 0 && data[0].account_id) {\n      realId = String(data[0].account_id);\n  }\n \n  // 3. FALLBACK 2: Tenta buscar ID da própria conta (após o merge, se o item for um resultado de insights)\n  if (!realId && data.length > 0 && data[0].account_id) {\n      realId = String(data[0].account_id);\n  }\n  \n  // 4. Lookup na planilha (verifica se o ID é ativo)\n  const contaData = realId ? contasMap.get(realId) : null;\n  const accountId = contaData ? realId : null; // AccountID só é válido se estiver na planilha\n  \n  return {\n    json: {\n      account_id: accountId,\n      account_name: accObj?.object_name || contaData?.Cliente || null, // Adicionado lookup do nome\n      data: data.map(activity => ({\n        ...activity,\n        account_id: accountId\n      }))\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -16
+      ],
+      "id": "145ce26e-6361-4c98-a994-05edd3576951",
+      "name": "Fetch Account ID"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json['ID - Conta Meta 1'] }}",
+                    "rightValue": 0,
+                    "operator": {
+                      "type": "string",
+                      "operation": "empty",
+                      "singleValue": true
+                    },
+                    "id": "9d08dbd5-71b8-4247-bfb1-0a1ffd1bc041"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Falta ID Meta"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "cd1b9002-4026-45a9-8003-ad1d21f4f0dd",
+                    "leftValue": "={{ $json['ID - Conta Meta 1'] }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Fora da MCC"
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        832,
+        256
+      ],
+      "id": "b2e910a2-6ea8-43d9-a056-1b1ad28f4184",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1Yyu3OlhvCKd-oLs2OoADNRyT79C48dSw7n4tDz6YBE8",
+          "mode": "list",
+          "cachedResultName": "[Lisboa & CO] - Operação SQUADS ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Yyu3OlhvCKd-oLs2OoADNRyT79C48dSw7n4tDz6YBE8/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 2086488750,
+          "mode": "list",
+          "cachedResultName": "Preenchimento_ID_Account",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Yyu3OlhvCKd-oLs2OoADNRyT79C48dSw7n4tDz6YBE8/edit#gid=2086488750"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Data": "={{ $now.format('dd/MM/yyyy') }}",
+            "Nome Cliente": "={{ $json.Cliente }}",
+            "Canal": "Meta ADS",
+            "Motivo de Erro": "={{ $json.error.message }}",
+            "ID Account Meta": "={{ $json['ID - Conta Meta 1'] }}",
+            "ID Card Pipefy": "={{ $json['ID - Cliente'] }}",
+            "Squad": "={{ $json.Squad }}",
+            "Diagnóstico": "-"
+          },
+          "matchingColumns": [
+            "ID Card Pipefy"
+          ],
+          "schema": [
+            {
+              "id": "Data",
+              "displayName": "Data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ID Card Pipefy",
+              "displayName": "ID Card Pipefy",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ID Account Meta",
+              "displayName": "ID Account Meta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Squad",
+              "displayName": "Squad",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Nome Cliente",
+              "displayName": "Nome Cliente",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Canal",
+              "displayName": "Canal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Diagnóstico",
+              "displayName": "Diagnóstico",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Motivo de Erro",
+              "displayName": "Motivo de Erro",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1072,
+        240
+      ],
+      "id": "5d78ab33-e619-4b0d-b813-57f274ca7776",
+      "name": "Sem ID meta",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ll6JS5CvdXwc7fig",
+          "name": "Lisboa.Co - Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1Yyu3OlhvCKd-oLs2OoADNRyT79C48dSw7n4tDz6YBE8",
+          "mode": "list",
+          "cachedResultName": "[Lisboa & CO] - Operação SQUADS ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Yyu3OlhvCKd-oLs2OoADNRyT79C48dSw7n4tDz6YBE8/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 2086488750,
+          "mode": "list",
+          "cachedResultName": "Preenchimento_ID_Account",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Yyu3OlhvCKd-oLs2OoADNRyT79C48dSw7n4tDz6YBE8/edit#gid=2086488750"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Data": "={{ $now.format('dd/MM/yyyy') }}",
+            "Nome Cliente": "={{ $json.Cliente }}",
+            "Canal": "Meta ADS",
+            "Motivo de Erro": "={{ $json.error.message }}",
+            "ID Card Pipefy": "={{ $json['ID - Cliente'] }}",
+            "ID Account Meta": "={{ $json['ID - Conta Meta 1'] }}",
+            "Squad": "={{ $json.Squad }}",
+            "Diagnóstico": "-"
+          },
+          "matchingColumns": [
+            "ID Card Pipefy"
+          ],
+          "schema": [
+            {
+              "id": "Data",
+              "displayName": "Data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ID Card Pipefy",
+              "displayName": "ID Card Pipefy",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ID Account Meta",
+              "displayName": "ID Account Meta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Squad",
+              "displayName": "Squad",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Nome Cliente",
+              "displayName": "Nome Cliente",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Canal",
+              "displayName": "Canal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Diagnóstico",
+              "displayName": "Diagnóstico",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Motivo de Erro",
+              "displayName": "Motivo de Erro",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1072,
+        400
+      ],
+      "id": "60f89749-2a0b-4362-8285-ae72feb4d35d",
+      "name": "Fora da MCC",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ll6JS5CvdXwc7fig",
+          "name": "Lisboa.Co - Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Yyu3OlhvCKd-oLs2OoADNRyT79C48dSw7n4tDz6YBE8",
+          "mode": "list",
+          "cachedResultName": "[Lisboa & CO] - Operação SQUADS ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Yyu3OlhvCKd-oLs2OoADNRyT79C48dSw7n4tDz6YBE8/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1454700548,
+          "mode": "list",
+          "cachedResultName": "Clientes",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Yyu3OlhvCKd-oLs2OoADNRyT79C48dSw7n4tDz6YBE8/edit#gid=1454700548"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Status",
+              "lookupValue": "Ativo"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        208,
+        0
+      ],
+      "id": "a62a4124-dd12-4ad2-aca0-76af5e4ed49d",
+      "name": "OP - Contas ID Meta",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Tw7vmV5GDt7JZhMQ",
+          "name": "WT - Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "google/gemini-2.5-pro",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        1920,
+        144
+      ],
+      "id": "59735537-c561-4566-a004-ed8a7d4af298",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "lrYNjfdNheom06fd",
+          "name": "Lisboa.Co - OpenRouter"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// 1. CÁLCULO LOCAL DE DATAS (Segurança contra falhas de nós anteriores)\n// ================================================================\nfunction getBrazilDate() {\n    const d = new Date();\n    d.setHours(d.getHours() - 3); \n    return d;\n}\n\nfunction fmt(date) {\n    return date.toISOString().split('T')[0];\n}\n\n// Formata para exibição PT-BR\nfunction fmtDisplay(dateStr) {\n    if (!dateStr) return 'N/A';\n    return dateStr.split('-').reverse().join('/');\n}\n\n// Formatação financeira segura\nfunction safeMoney(val) {\n    return Number(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });\n}\n\n// Formatação de números inteiros\nfunction safeInt(val) {\n    return Number(val || 0).toLocaleString('pt-BR');\n}\n\n// ================================================================\n// 2. PROCESSAMENTO DAS CONTAS\n// ================================================================\nconst accountsWithReports = $json.accounts.map(account => {\n    // Garante que insights_aggregated seja um array\n    const insights = account.insights_aggregated || [];\n    \n    // Pega o único item (já que simplificamos para \"Últimos 7 dias\" sem comparação)\n    // Se houver mais de um, pega o primeiro (que assumimos ser o desejado no node anterior)\n    const data = insights[0] || {};\n    \n    // --- DATAS ---\n    const dateStart = fmtDisplay(data.date_start);\n    const dateStop = fmtDisplay(data.date_stop);\n\n    // --- MÉTRICAS GERAIS ---\n    const spend = Number(data.spend || 0);\n    const impressions = Number(data.impressions || 0);\n    const clicks = Number(data.clicks || 0);\n    const ctr = Number(data.ctr || 0);\n\n    // --- FUNIL DE E-COMMERCE ---\n    const carts = Number(data.add_to_cart || 0);\n    const checkouts = Number(data.initiate_checkout || 0);\n    const purchases = Number(data.purchases || 0);\n    const roas = Number(data.roas || 0);\n    \n    // Critério para exibir E-commerce: Ter pelo menos 1 carrinho ou 1 compra\n    const hasEcommerce = (carts > 0 || purchases > 0);\n\n    // --- FUNIL DE CONTATOS (LEADS + MSGS) ---\n    // Soma Leads (forms) + Mensagens + Contatos\n    // Nota: 'leads' e 'message_starts' vêm do Aggregate Metrics. \n    // Se você tiver mapeado 'contact' lá, adicione aqui. Por padrão, assumimos leads+msgs.\n    const totalContacts = Number(data.leads || 0) + Number(data.message_starts || 0);\n    \n    // Custo por Contato (CPA de Lead)\n    // Se houve conversas, divide o gasto total por elas. \n    // OBS: Se for híbrido, o CPA pode ficar \"sujo\" (gasto total / leads), \n    // mas é a melhor aproximação sem dividir o budget por campanha.\n    const costPerContact = totalContacts > 0 ? (spend / totalContacts) : 0;\n    \n    const hasContacts = totalContacts > 0;\n\n    // --- CONSTRUÇÃO DO TEXTO DINÂMICO ---\n    let performanceSection = \"\";\n\n    // 1. SEÇÃO E-COMMERCE (Se aplicável)\n    if (hasEcommerce) {\n        performanceSection += `\n🛒 *Funil de Vendas*\n• Carrinhos: ${safeInt(carts)}\n• Checkouts: ${safeInt(checkouts)}\n• Compras: ${safeInt(purchases)}\n• ROAS: ${roas.toFixed(2)}\n`;\n    }\n\n    // 2. SEÇÃO CONTATOS/LEADS (Se aplicável)\n    if (hasContacts) {\n        performanceSection += `\n💬 *Geração de Contatos*\n• Total (Msgs + Leads): ${safeInt(totalContacts)}\n• Custo por Contato: R$ ${safeMoney(costPerContact)}\n`;\n    }\n\n    // Se não tiver nenhum dos dois (Apenas tráfego/branding)\n    if (!hasEcommerce && !hasContacts) {\n        performanceSection += `\n📉 *Engajamento*\n• Foco em Tráfego/Alcance (Sem conversões registradas)\n`;\n    }\n\n    // --- TEXTO FINAL ---\n    const text_base = \n`📊 *Relatório Semanal - Performance*\n\n📅 *Período:* ${dateStart} a ${dateStop}\n🏢 *Conta:* ${account.account_name}\n\n**RESUMO EXECUTIVO:**\n// RESERVADO PARA AGENTE AI\n\n💰 *Investimento:* R$ ${safeMoney(spend)}\n${performanceSection}\n👁️ *Visibilidade:*\n• Impressões: ${safeInt(impressions)}\n• Cliques: ${safeInt(clicks)} (CTR: ${ctr.toFixed(2)}%)\n`;\n\n    return {\n        json: {\n            account_id: account.account_id,\n            account_name: account.account_name,\n            text_base: text_base,\n            metrics: {\n                spend,\n                impressions,\n                clicks,\n                ctr,\n                // Ecom\n                carts,\n                checkouts,\n                purchases,\n                roas,\n                // Leads\n                totalContacts,\n                costPerContact\n            }\n        }\n    };\n});\n\nreturn [{ json: { accounts: accountsWithReports } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1696,
+        -16
+      ],
+      "id": "5b7df1ab-8736-4a03-a39c-8fe9a97b3468",
+      "name": "Resumo de métricas"
+    },
+    {
+      "parameters": {
+        "jsCode": "const text_base = $node['Report Básico JS'].json.text_base;\nconst summary = $input.first().json.text; // Assume que o Agente retorna o resumo no campo 'text'\n\n// Substitui o placeholder no texto base\nconst final_text = text_base.replace(\"// RESERVADO PARA AGENTE AI\", summary);\n\nreturn [{\n  json: {\n    final_report: final_text\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2320,
+        -16
+      ],
+      "id": "08319108-9a21-4430-93fe-85efe7c93411",
+      "name": "Final Report Injetor"
+    }
+  ],
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Regras de Negócio - Time Extract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meta - Campanha - Last Week": {
+      "main": [
+        [
+          {
+            "node": "Fetch Account ID",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Output Parser": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Metrics": {
+      "main": [
+        [
+          {
+            "node": "Resumo de métricas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Final Report Injetor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Think": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Regras de Negócio - Time Extract": {
+      "main": [
+        [
+          {
+            "node": "OP - Contas ID Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Account ID": {
+      "main": [
+        [
+          {
+            "node": "Output Parser",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Sem ID meta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fora da MCC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OP - Contas ID Meta": {
+      "main": [
+        [
+          {
+            "node": "Meta - Campanha - Last Week",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resumo de métricas": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2d946570092a86d9c7ad06bd1a4d02c366559a0792b5dca95ecb6b7fe9120c6c"
+  }
+}
